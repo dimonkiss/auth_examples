@@ -12,17 +12,16 @@
         <main id="main-holder">
             <a href="/logout" id="logout">Logout</a>
 
-            <h1 id="login-header">Login</h1>
+            <h1 id="login-header">Login with SSO</h1>
 
             <div id="login-error-msg-holder">
-                <p id="login-error-msg">Invalid username <span id="error-msg-second-line">and/or password</span></p>
+                <p id="login-error-msg" style="display: none;"></p>
             </div>
 
-            <form id="login-form" action="/api/login" method="post">
-                <input type="email" name="login" id="username-field" class="login-form-field" placeholder="Email">
-                <input type="password" name="password" id="password-field" class="login-form-field" placeholder="Password">
-                <input type="submit" value="Login" id="login-form-submit">
-            </form>
+            <div id="sso-login-container">
+                <p>Вхід через Auth0 Single Sign-On</p>
+                <button id="sso-login-button" class="sso-button">Login with Auth0</button>
+            </div>
 
         </main>
     </body>
@@ -83,47 +82,60 @@
             display: block;
         }
 
-        #login-form {
+        #sso-login-container {
             align-self: flex-start;
             display: grid;
             justify-items: center;
             align-items: center;
+            gap: 20px;
         }
 
-        .login-form-field::placeholder {
+        #sso-login-container p {
+            margin: 0;
             color: #3a3a3a;
+            font-size: 16px;
         }
 
-        .login-form-field {
-            border: none;
-            border-bottom: 1px solid #3a3a3a;
-            margin-bottom: 10px;
-            border-radius: 3px;
-            outline: none;
-            padding: 0px 0px 5px 5px;
-        }
-
-        #login-form-submit {
-            width: 100%;
-            padding: 7px;
+        .sso-button {
+            width: 200px;
+            padding: 12px 24px;
             border: none;
             border-radius: 5px;
             color: white;
             font-weight: bold;
-            background-color: #3a3a3a;
+            font-size: 16px;
+            background-color: #eb5424;
             cursor: pointer;
             outline: none;
+            transition: background-color 0.3s;
+        }
+
+        .sso-button:hover {
+            background-color: #d4431a;
+        }
+
+        .sso-button:active {
+            background-color: #b83816;
         }
     </style>
 
     <script>
         const session = sessionStorage.getItem('session');
-
         let token;
 
         try {
             token = JSON.parse(session).token;
         } catch(e) {}
+
+        // Перевірка помилок в URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const error = urlParams.get('error');
+        if (error) {
+            const loginErrorMsg = document.getElementById("login-error-msg");
+            loginErrorMsg.textContent = `Помилка: ${error}`;
+            loginErrorMsg.style.display = 'block';
+            loginErrorMsg.style.opacity = 1;
+        }
 
         if (token) {
             axios.get('/', {
@@ -136,61 +148,42 @@
                 if (username) {
                     const mainHolder = document.getElementById("main-holder");
                     const loginHeader = document.getElementById("login-header");
+                    const ssoContainer = document.getElementById("sso-login-container");
+                    const loginErrorMsg = document.getElementById("login-error-msg");
 
-                    loginForm.remove();
-                    loginErrorMsg.remove();
-                    loginHeader.remove();
+                    if (ssoContainer) ssoContainer.remove();
+                    if (loginErrorMsg) loginErrorMsg.remove();
+                    if (loginHeader) loginHeader.remove();
 
                     const welcomeText = document.createElement('div');
-                    welcomeText.innerHTML = `<h2>Hello ${username}!</h2>${email ? `<p>Email: ${email}</p>` : ''}`;
+                    welcomeText.innerHTML = `<h2>Hello ${username}!</h2>${email ? `<p>Email: ${email}</p>` : ''}<p>Автентифікація через Auth0 SSO</p>`;
                     mainHolder.appendChild(welcomeText);
-                    logoutLink.style.opacity = 1;
+                    
+                    const logoutLink = document.getElementById("logout");
+                    if (logoutLink) logoutLink.style.opacity = 1;
                 }
             }).catch((error) => {
                 console.error('Помилка при перевірці сесії:', error);
+                sessionStorage.removeItem('session');
             });
         }
 
+        const ssoLoginButton = document.getElementById("sso-login-button");
+        const logoutLink = document.getElementById("logout");
 
-        const loginForm = document.getElementById("login-form");
-        const loginButton = document.getElementById("login-form-submit");
-        const loginErrorMsg = document.getElementById("login-error-msg");
-        const logoutLink =  document.getElementById("logout");
-
-        logoutLink.addEventListener("click", (e) => {
-            e.preventDefault();
-            sessionStorage.removeItem('session');
-            location.reload();
-        });
-
-        loginButton.addEventListener("click", (e) => {
-            e.preventDefault();
-            const login = loginForm.login.value;
-            const password = loginForm.password.value;
-
-
-            axios({
-                method: 'post',
-                url: '/api/login',
-                data: {
-                    login,
-                    password
-                }
-            }).then((response) => {
-                const { username, email, token } = response.data;
-                if (token) {
-                    sessionStorage.setItem('session', JSON.stringify({ token, username, email }));
-                    location.reload();
-                } else {
-                    loginErrorMsg.style.opacity = 1;
-                }
-            }).catch((error) => {
-                console.error('Помилка автентифікації:', error.response?.data || error.message);
-                loginErrorMsg.style.opacity = 1;
-                if (error.response?.data?.error) {
-                    loginErrorMsg.textContent = error.response.data.error;
-                }
+        if (logoutLink) {
+            logoutLink.addEventListener("click", (e) => {
+                e.preventDefault();
+                sessionStorage.removeItem('session');
+                location.reload();
             });
-        })
+        }
+
+        if (ssoLoginButton) {
+            ssoLoginButton.addEventListener("click", (e) => {
+                e.preventDefault();
+                window.location.href = '/login';
+            });
+        }
     </script>
 </html>

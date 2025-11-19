@@ -10,10 +10,11 @@ const port = 3000;
 const fs = require('fs');
 
 const AUTH0_DOMAIN = 'dev-dip3jzvktcwcx001.us.auth0.com';
-const AUTH0_CLIENT_ID = 'O9Ur7t5HZPtfOdil7e86CRTNxwAQHb4P';
-const AUTH0_CLIENT_SECRET = 'ssV-J0R5otVj1e3XV007QfVWmRv_bp5h0eCVYLXdIp53uN430B73ygYnOyTcPXhj';
+const AUTH0_CLIENT_ID = 'XCeuiOQiTdXW0oo8HBAVRxhYotX5pfhV';
+const AUTH0_CLIENT_SECRET = 'H3QSPM6htEm9rerUAwGAqi0Nrp4VOUa8ZKdylqH-7P-_Edn9ToKnI3K-R4dKx9Z3';
 const AUTH0_AUDIENCE = 'https://dev-dip3jzvktcwcx001.us.auth0.com/api/v2/';
 const AUTH0_CONNECTION = 'Username-Password-Authentication';
+const REDIRECT_URI = 'http://localhost:3000/callback';
 
 const client = jwksClient({
     jwksUri: `https://${AUTH0_DOMAIN}/.well-known/jwks.json`
@@ -227,6 +228,79 @@ async function validateAuth0Token(token) {
         }
     }
 }
+
+// Endpoint для редіректу на Auth0 SSO
+app.get('/login', (req, res) => {
+    const authUrl = new URL(`https://${AUTH0_DOMAIN}/authorize`);
+    authUrl.searchParams.set('client_id', AUTH0_CLIENT_ID);
+    authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('response_mode', 'query');
+    authUrl.searchParams.set('scope', 'openid profile email');
+    
+    console.log('Редірект на Auth0 SSO:', authUrl.toString());
+    res.redirect(authUrl.toString());
+});
+
+// Callback endpoint для обробки authorization code
+app.get('/callback', async (req, res) => {
+    const { code, error, error_description } = req.query;
+
+    if (error) {
+        console.error('Помилка авторизації:', error, error_description);
+        return res.redirect(`/?error=${encodeURIComponent(error_description || error)}`);
+    }
+
+    if (!code) {
+        return res.redirect('/?error=authorization_code_not_provided');
+    }
+
+    try {
+        // Обмін authorization code на токени
+        const tokenResponse = await axios.post(
+            `https://${AUTH0_DOMAIN}/oauth/token`,
+            new URLSearchParams({
+                grant_type: 'authorization_code',
+                client_id: AUTH0_CLIENT_ID,
+                client_secret: AUTH0_CLIENT_SECRET,
+                code: code,
+                redirect_uri: REDIRECT_URI
+            }),
+            {
+                headers: {
+                    'content-type': 'application/x-www-form-urlencoded'
+                }
+            }
+        );
+
+        const { access_token, id_token, refresh_token } = tokenResponse.data;
+
+        // Декодування ID токену для отримання інформації про користувача
+        let userInfo;
+        try {
+            userInfo = jwt.decode(id_token);
+        } catch (e) {
+            userInfo = {};
+        }
+
+        // Збереження інформації в сесії
+        req.session.auth0Token = access_token;
+        req.session.refreshToken = refresh_token;
+        req.session.idToken = id_token;
+        req.session.username = userInfo.name || userInfo.email || userInfo.sub;
+        req.session.email = userInfo.email;
+        req.session.userId = userInfo.sub;
+
+        console.log('Успішна автентифікація через SSO:', req.session.email);
+
+        // Перенаправлення на головну сторінку
+        res.redirect('/');
+    } catch (error) {
+        console.error('Помилка обміну code на токени:', error.response?.data || error.message);
+        const errorMsg = error.response?.data?.error_description || error.message;
+        res.redirect(`/?error=${encodeURIComponent(errorMsg)}`);
+    }
+});
 
 app.get('/', async (req, res) => {
     if (req.session.auth0Token) {
