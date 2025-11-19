@@ -19,7 +19,7 @@
             </div>
 
             <form id="login-form" action="/api/login" method="post">
-                <input type="text" name="login" id="username-field" class="login-form-field" placeholder="Username">
+                <input type="email" name="login" id="username-field" class="login-form-field" placeholder="Email">
                 <input type="password" name="password" id="password-field" class="login-form-field" placeholder="Password">
                 <input type="submit" value="Login" id="login-form-submit">
             </form>
@@ -131,7 +131,7 @@
                     Authorization: token
                 }
             }).then((response) => {
-                const { username } = response.data;
+                const { username, email } = response.data;
 
                 if (username) {
                     const mainHolder = document.getElementById("main-holder");
@@ -141,9 +141,13 @@
                     loginErrorMsg.remove();
                     loginHeader.remove();
 
-                    mainHolder.append(`Hello ${username}`);
+                    const welcomeText = document.createElement('div');
+                    welcomeText.innerHTML = `<h2>Hello ${username}!</h2>${email ? `<p>Email: ${email}</p>` : ''}`;
+                    mainHolder.appendChild(welcomeText);
                     logoutLink.style.opacity = 1;
                 }
+            }).catch((error) => {
+                console.error('Помилка при перевірці сесії:', error);
             });
         }
 
@@ -173,11 +177,19 @@
                     password
                 }
             }).then((response) => {
-                const { username } =  response.data;
-                sessionStorage.setItem('session', JSON.stringify(response.data));
-                location.reload();
-            }).catch((response) => {
+                const { username, email, token } = response.data;
+                if (token) {
+                    sessionStorage.setItem('session', JSON.stringify({ token, username, email }));
+                    location.reload();
+                } else {
+                    loginErrorMsg.style.opacity = 1;
+                }
+            }).catch((error) => {
+                console.error('Помилка автентифікації:', error.response?.data || error.message);
                 loginErrorMsg.style.opacity = 1;
+                if (error.response?.data?.error) {
+                    loginErrorMsg.textContent = error.response.data.error;
+                }
             });
         })
     </script>
